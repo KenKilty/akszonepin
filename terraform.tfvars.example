@@ -1,0 +1,19 @@
+# Required variables
+location            = "eastus"
+name               = "aks-zone-test"
+resource_group_name = "rg-aks-zone-test"
+owner              = "example-user"
+
+# AKS Node Pool Configuration
+vm_size            = "Standard_DS2_v2"
+node_count         = 2
+min_node_count     = 2
+max_node_count     = 4
+availability_zones = ["1", "2"]
+
+# Optional variables
+enable_telemetry = true
+tags = {
+  Environment = "Development"
+  Project     = "AKS Zone Test"
+} 
