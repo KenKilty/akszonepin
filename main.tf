@@ -58,9 +58,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
     vm_size             = var.vm_size
     vnet_subnet_id      = azurerm_subnet.aks.id
     zones               = var.system_node_zones
-    enable_auto_scaling = true
-    min_count           = var.min_node_count
-    max_count           = var.max_node_count
+    enable_auto_scaling = false
     max_pods            = 30
     os_disk_size_gb     = 30
     os_disk_type        = "Managed"
@@ -98,9 +96,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "pgzone1" {
   node_count           = var.postgres_zone1_node_count
   vnet_subnet_id       = azurerm_subnet.aks.id
   zones                = var.postgres_zone1_zones
-  enable_auto_scaling  = true
-  min_count           = var.min_node_count
-  max_count           = var.max_node_count
+  enable_auto_scaling  = false
   max_pods            = 30
   os_disk_size_gb     = 30
   os_disk_type        = "Managed"
@@ -122,9 +118,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "pgzone2" {
   node_count           = var.postgres_zone2_node_count
   vnet_subnet_id       = azurerm_subnet.aks.id
   zones                = var.postgres_zone2_zones
-  enable_auto_scaling  = true
-  min_count           = var.min_node_count
-  max_count           = var.max_node_count
+  enable_auto_scaling  = false
   max_pods            = 30
   os_disk_size_gb     = 30
   os_disk_type        = "Managed"
