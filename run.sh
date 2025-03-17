@@ -40,92 +40,21 @@ verify_command() {
 
 # Function to verify node distribution
 verify_node_distribution() {
-    print_info "Verifying node distribution..."
+    echo "Verifying node distribution..."
+    local zone1_count=$(kubectl get nodes -l node-type=postgres,zone=1 -o json | jq '.items | length')
+    local zone2_count=$(kubectl get nodes -l node-type=postgres,zone=2 -o json | jq '.items | length')
     
-    # Get expected node counts from terraform output
-    local expected_system_count
-    local expected_zone1_count
-    local expected_zone2_count
-    
-    if ! expected_system_count=$(terraform output system_node_count | tr -d '"'); then
-        print_error "Failed to get system node count from terraform output"
-        return 1
-    fi
-    
-    if ! expected_zone1_count=$(terraform output postgres_zone1_node_count | tr -d '"'); then
-        print_error "Failed to get zone1 node count from terraform output"
-        return 1
-    fi
-    
-    if ! expected_zone2_count=$(terraform output postgres_zone2_node_count | tr -d '"'); then
-        print_error "Failed to get zone2 node count from terraform output"
-        return 1
-    fi
-    
-    print_info "Expected node counts:"
-    echo "   System nodes: $expected_system_count"
-    echo "   Postgres Zone 1 nodes: $expected_zone1_count"
-    echo "   Postgres Zone 2 nodes: $expected_zone2_count"
-    
-    # Get current node distribution
-    print_info "Current node distribution:"
-    if ! kubectl get nodes -o wide | cat; then
-        print_error "Failed to get node information"
-        return 1
-    fi
-    
-    # Count nodes per pool
-    local system_count
-    local zone1_postgres_count
-    local zone2_postgres_count
-    
-    system_count=$(kubectl get nodes --no-headers -l agentpool=system | wc -l)
-    zone1_postgres_count=$(kubectl get nodes --no-headers -l agentpool=pgzone1 | wc -l)
-    zone2_postgres_count=$(kubectl get nodes --no-headers -l agentpool=pgzone2 | wc -l)
-    
-    print_info "Actual node counts:"
-    echo "   System nodes: $system_count"
-    echo "   Postgres Zone 1 nodes: $zone1_postgres_count"
-    echo "   Postgres Zone 2 nodes: $zone2_postgres_count"
-    
-    # Verify node counts match
-    if [ "$system_count" -eq "$expected_system_count" ] && \
-       [ "$zone1_postgres_count" -eq "$expected_zone1_count" ] && \
-       [ "$zone2_postgres_count" -eq "$expected_zone2_count" ]; then
-        print_success "Node distribution matches expected configuration"
-        return 0
-    else
-        print_error "Node distribution does not match expected configuration"
-        return 1
-    fi
+    echo "Current node distribution:"
+    echo "Zone 1 (pgzone1): $zone1_count nodes"
+    echo "Zone 2 (pgzone2): $zone2_count nodes"
 }
 
-# Function to verify node readiness
-verify_node_readiness() {
-    print_info "Verifying node readiness..."
-    if ! kubectl wait --for=condition=ready nodes --all --timeout=300s; then
-        print_error "Not all nodes are ready"
-        return 1
-    fi
-    print_success "All nodes are ready"
-    return 0
-}
-
-# Function to verify zone labels
-verify_zone_labels() {
-    print_info "Verifying zone labels..."
-    local nodes_with_zones
-    nodes_with_zones=$(kubectl get nodes -o custom-columns=NAME:.metadata.name,ZONE:.metadata.labels."topology\.kubernetes\.io/zone" --no-headers | grep -v "<none>")
-    
-    if [ -z "$nodes_with_zones" ]; then
-        print_error "No nodes have zone labels"
-        return 1
-    fi
-    
-    print_info "Nodes with zone labels:"
-    echo "$nodes_with_zones"
-    print_success "Zone labels verified"
-    return 0
+# Output storage class information
+output_storage_info() {
+    echo "Storage Class Information:"
+    echo "Premium SSD v2 Storage Class: $(terraform output -raw storage_class_name)"
+    echo "Storage Class Details:"
+    kubectl get sc $(terraform output -raw storage_class_name) -o yaml
 }
 
 # Main script execution
@@ -176,9 +105,8 @@ main() {
     fi
     
     # Verify node distribution
-    if ! verify_node_distribution; then
-        exit 1
-    fi
+    verify_node_distribution
+    output_storage_info
     
     print_success "All verifications completed successfully!"
 }

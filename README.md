@@ -1,150 +1,154 @@
-# AKS Zone-Pinned Infrastructure
+# AKS Zone-Aware PostgreSQL Cluster
 
-This repository contains Terraform configurations for deploying an Azure Kubernetes Service (AKS) cluster with zone-pinned node pools, specifically designed for running PostgreSQL workloads with high availability across availability zones.
+This project deploys an Azure Kubernetes Service (AKS) cluster with zone-redundant node pools optimized for PostgreSQL workloads, using Premium SSD v2 storage.
 
-## Architecture Overview
+## Architecture
 
-```mermaid
-graph TB
-    subgraph "Azure Kubernetes Service"
-        subgraph "System Node Pool"
-            S1[System Node 1] --> |Zone 1| AZ1
-            S2[System Node 2] --> |Zone 2| AZ2
-        end
-        
-        subgraph "PostgreSQL Zone 1 Node Pool"
-            P1[Postgres Node 1] --> |Zone 1| AZ1
-            P2[Postgres Node 2] --> |Zone 1| AZ1
-        end
-        
-        subgraph "PostgreSQL Zone 2 Node Pool"
-            P3[Postgres Node 3] --> |Zone 2| AZ2
-        end
-    end
-    
-    subgraph "Availability Zones"
-        AZ1[Zone 1]
-        AZ2[Zone 2]
-    end
-    
-    subgraph "Azure Container Registry"
-        ACR[Container Registry]
-    end
-    
-    AKS --> ACR
+```ascii
++------------------------------------------+
+|              AKS Cluster                  |
+|                                          |
+|  +----------------+  +----------------+   |
+|  |   Zone 1      |  |    Zone 2     |   |
+|  |               |  |               |   |
+|  | +-----------+ |  | +-----------+ |   |
+|  | |  System   | |  | |  System   | |   |
+|  | |   Node    | |  | |   Node    | |   |
+|  | +-----------+ |  | +-----------+ |   |
+|  |               |  |               |   |
+|  | +-----------+ |  | +-----------+ |   |
+|  | | Postgres  | |  | | Postgres  | |   |
+|  | | Node (x2) | |  | | Node (x1) | |   |
+|  | +-----------+ |  | +-----------+ |   |
+|  |               |  |               |   |
+|  +----------------+  +----------------+   |
+|                                          |
+|  +----------------------------------+    |
+|  |      Premium SSD v2 Storage      |    |
+|  |  +-------------+ +-------------+ |    |
+|  |  | Zone 1 Pool | | Zone 2 Pool | |    |
+|  |  | 80K IOPS   | | 80K IOPS    | |    |
+|  |  | 1.2GB/s    | | 1.2GB/s     | |    |
+|  |  +-------------+ +-------------+ |    |
+|  +----------------------------------+    |
++------------------------------------------+
 ```
 
-## Infrastructure Components
+## Components
 
-### 1. AKS Cluster
-- **Kubernetes Version**: 1.30
-- **RBAC**: Enabled for enhanced security
-- **Local Accounts**: Enabled for direct cluster access
-- **Network Plugin**: Azure CNI
+### Node Pools
+1. **System Node Pool**
+   - VM Size: Standard_D2s_v3
+   - Nodes: 2 (distributed across zones 1 and 2)
+   - Auto-scaling: 1-3 nodes
+   - Purpose: System workloads and cluster services
 
-### 2. Node Pools
+2. **PostgreSQL Node Pools**
+   - VM Size: Standard_D2s_v3 (smallest in Dsv3-series)
+   - Zone 1: 2 nodes
+   - Zone 2: 1 node
+   - Auto-scaling: 1-3 nodes per zone
+   - Node taints: "node-type=postgres:NoSchedule"
+   - Labels: node-type=postgres, zone=1|2
 
-#### System Node Pool
-- **Purpose**: System workloads and critical cluster components
-- **Node Count**: 2 nodes
-- **Distribution**: 1 node in Zone 1, 1 node in Zone 2
-- **VM Size**: Standard_DS2_v2
-- **OS**: Azure Linux
+### Storage Configuration
+- **Storage Class**: Premium SSD v2
+- **Performance**:
+  - IOPS: 80,000 per disk
+  - Throughput: 1,200 MB/s per disk
+- **Features**:
+  - Volume expansion enabled
+  - WaitForFirstConsumer binding mode
+  - Zone-redundant deployment
 
-#### PostgreSQL Zone 1 Node Pool (pgzone1)
-- **Purpose**: Primary PostgreSQL nodes
-- **Node Count**: 2 nodes
-- **Distribution**: Both nodes in Zone 1
-- **VM Size**: Standard_DS2_v2
-- **OS**: Azure Linux
-- **Upgrade Settings**:
-  - Max Surge: 25% (allows scaling up to 3 nodes during upgrades)
-  - Drain Timeout: 30 minutes
-  - Node Soak Duration: 5 minutes
+### Networking
+- Virtual Network: 10.0.0.0/16
+- AKS Subnet: 10.0.1.0/24
+- Network Plugin: Azure CNI
+- Network Policy: Azure
 
-#### PostgreSQL Zone 2 Node Pool (pgzone2)
-- **Purpose**: Secondary PostgreSQL nodes
-- **Node Count**: 1 node
-- **Distribution**: Single node in Zone 2
-- **VM Size**: Standard_DS2_v2
-- **OS**: Azure Linux
-- **Upgrade Settings**:
-  - Max Surge: 25% (allows scaling up to 2 nodes during upgrades)
-  - Drain Timeout: 30 minutes
-  - Node Soak Duration: 5 minutes
+### Container Registry
+- Basic SKU with admin access
+- System-assigned managed identity
+- Integrated with AKS using AcrPull and AcrPush roles
 
-### 3. Azure Container Registry
-- **SKU**: Basic
-- **Admin Access**: Enabled
-- **Identity**: System-assigned managed identity
-- **Network**: Public access with Azure services bypass
+## Prerequisites
+- Azure subscription
+- Azure CLI (az)
+- Terraform
+- kubectl
 
-## Configuration Details
+## Deployment
 
-### Zone Distribution
-The infrastructure is designed with a specific zone distribution to ensure high availability:
-- Zone 1: Contains 3 nodes (2 PostgreSQL + 1 System)
-- Zone 2: Contains 2 nodes (1 PostgreSQL + 1 System)
+1. Initialize Terraform:
+```bash
+terraform init
+```
 
-This distribution ensures:
-1. No single zone failure can take down the entire cluster
-2. PostgreSQL nodes are primarily in Zone 1 with a secondary node in Zone 2
-3. System workloads are distributed across zones
+2. Review the configuration:
+```bash
+terraform plan
+```
 
-### Upgrade Strategy
-The node pools are configured with specific upgrade settings to maintain availability:
-- **Max Surge**: 25% of node count
-  - pgzone1: Can scale up to 3 nodes during upgrades
-  - pgzone2: Can scale up to 2 nodes during upgrades
-- **Drain Timeout**: 30 minutes
-  - Allows pods to gracefully terminate
-  - Ensures data consistency during node replacement
-- **Node Soak Duration**: 5 minutes
-  - Verifies new nodes are functioning correctly
-  - Prevents rapid consecutive upgrades
+3. Deploy the infrastructure:
+```bash
+terraform apply
+```
 
-### Security Configuration
-1. **RBAC**: Enabled for fine-grained access control
-2. **Local Accounts**: Enabled for direct cluster access
-3. **Managed Identities**: Used for AKS and ACR
-4. **Role Assignments**:
-   - AKS has AcrPull and AcrPush roles for ACR
-   - ACR has Owner role for self-management
+4. Run the verification script:
+```bash
+./run.sh
+```
 
-## Deployment and Verification
+The script will:
+- Verify prerequisites
+- Deploy the AKS cluster
+- Configure kubectl
+- Verify node distribution
+- Display storage class configuration
 
-The repository includes a `run.sh` script that:
-1. Verifies prerequisites
-2. Initializes Terraform
-3. Deploys the infrastructure
-4. Verifies node distribution
-5. Checks node readiness
-6. Validates zone labels
-7. Ensures proper node counts
+## Configuration
 
-## Usage
+Key configuration values in `terraform.tfvars`:
+```hcl
+# Node Sizes
+vm_size         = "Standard_D2s_v3"    # System nodes
+postgres_vm_size = "Standard_D2s_v3"    # PostgreSQL nodes
 
-1. Clone the repository
-2. Ensure Azure CLI and Terraform are installed
-3. Authenticate with Azure:
-   ```bash
-   az login
-   ```
-4. Run the deployment:
-   ```bash
-   ./run.sh
-   ```
+# Node Counts
+system_node_count        = 2
+postgres_zone1_node_count = 2
+postgres_zone2_node_count = 1
+
+# Auto-scaling
+min_node_count = 1
+max_count = 3
+
+# Kubernetes Version
+kubernetes_version = "1.30"
+```
 
 ## Cleanup
 
-The `run.sh` script includes an optional cleanup step that can destroy the infrastructure when prompted. This is useful for development and testing environments.
+To destroy the infrastructure:
+```bash
+terraform destroy
+```
 
-## Notes
+## Production Considerations
+1. Enable Azure AD integration for RBAC
+2. Configure network policies
+3. Implement proper backup strategies
+4. Monitor node and storage performance
+5. Consider using availability zones 1, 2, and 3 for better redundancy
+6. Implement proper resource requests and limits
+7. Configure cluster autoscaling thresholds appropriately
 
-- The infrastructure is designed for development/testing purposes
-- For production use, consider:
-  - Upgrading ACR to Standard SKU
-  - Implementing network policies
-  - Adding monitoring and logging
-  - Configuring backup strategies
-  - Implementing proper secret management 
+## Tags and Labels
+- Environment-specific tags for resource management
+- Workload-specific tags for node pools
+- Zone labels for topology awareness
+- Node type labels for workload placement
+
+## License
+Apache License 2.0 

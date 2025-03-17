@@ -38,10 +38,10 @@ resource "azurerm_container_registry" "aks" {
 
 resource "azurerm_kubernetes_cluster" "aks" {
   name                = var.name
-  location            = azurerm_resource_group.aks.location
+  location            = var.location
   resource_group_name = azurerm_resource_group.aks.name
   dns_prefix          = var.name
-  kubernetes_version  = "1.30"
+  kubernetes_version  = var.kubernetes_version
 
   # Disable AAD RBAC and enable local accounts
   azure_active_directory_role_based_access_control {
@@ -56,10 +56,18 @@ resource "azurerm_kubernetes_cluster" "aks" {
     name                = "system"
     node_count          = var.system_node_count
     vm_size             = var.vm_size
+    vnet_subnet_id      = azurerm_subnet.aks.id
     zones               = var.system_node_zones
-    os_sku              = "AzureLinux"
-    tags                = local.common_tags
-    temporary_name_for_rotation = "systemtemp"
+    enable_auto_scaling = true
+    min_count           = var.min_node_count
+    max_count           = var.max_node_count
+    max_pods            = 30
+    os_disk_size_gb     = 30
+    os_disk_type        = "Managed"
+    node_labels = {
+      "node-type" = "system"
+    }
+    tags = var.agents_tags
   }
 
   identity {
@@ -72,43 +80,62 @@ resource "azurerm_kubernetes_cluster" "aks" {
   # Enable Kubernetes RBAC
   role_based_access_control_enabled = true
 
-  tags = local.common_tags
+  network_profile {
+    network_plugin = "azure"
+    network_policy = "azure"
+    service_cidr   = "172.16.0.0/16"
+    dns_service_ip = "172.16.0.10"
+  }
+
+  tags = var.tags
 }
 
 # PostgreSQL Zone 1 Node Pool
-resource "azurerm_kubernetes_cluster_node_pool" "postgres_zone1" {
+resource "azurerm_kubernetes_cluster_node_pool" "pgzone1" {
   name                  = "pgzone1"
   kubernetes_cluster_id = azurerm_kubernetes_cluster.aks.id
-  vm_size              = var.vm_size
+  vm_size              = var.postgres_vm_size
   node_count           = var.postgres_zone1_node_count
+  vnet_subnet_id       = azurerm_subnet.aks.id
   zones                = var.postgres_zone1_zones
-  os_sku               = "AzureLinux"
-  mode                 = "User"
-  tags                 = local.common_tags
-
-  upgrade_settings {
-    max_surge                     = "25%"
-    drain_timeout_in_minutes      = 30
-    node_soak_duration_in_minutes = 5
+  enable_auto_scaling  = true
+  min_count           = var.min_node_count
+  max_count           = var.max_node_count
+  max_pods            = 30
+  os_disk_size_gb     = 30
+  os_disk_type        = "Managed"
+  os_type             = "Linux"
+  priority            = "Regular"
+  node_labels = {
+    "node-type" = "postgres"
+    "zone"      = "1"
   }
+  node_taints = ["node-type=postgres:NoSchedule"]
+  tags        = var.agents_tags
 }
 
 # PostgreSQL Zone 2 Node Pool
-resource "azurerm_kubernetes_cluster_node_pool" "postgres_zone2" {
+resource "azurerm_kubernetes_cluster_node_pool" "pgzone2" {
   name                  = "pgzone2"
   kubernetes_cluster_id = azurerm_kubernetes_cluster.aks.id
-  vm_size              = var.vm_size
+  vm_size              = var.postgres_vm_size
   node_count           = var.postgres_zone2_node_count
+  vnet_subnet_id       = azurerm_subnet.aks.id
   zones                = var.postgres_zone2_zones
-  os_sku               = "AzureLinux"
-  mode                 = "User"
-  tags                 = local.common_tags
-
-  upgrade_settings {
-    max_surge                     = "25%"
-    drain_timeout_in_minutes      = 30
-    node_soak_duration_in_minutes = 5
+  enable_auto_scaling  = true
+  min_count           = var.min_node_count
+  max_count           = var.max_node_count
+  max_pods            = 30
+  os_disk_size_gb     = 30
+  os_disk_type        = "Managed"
+  os_type             = "Linux"
+  priority            = "Regular"
+  node_labels = {
+    "node-type" = "postgres"
+    "zone"      = "2"
   }
+  node_taints = ["node-type=postgres:NoSchedule"]
+  tags        = var.agents_tags
 }
 
 # Verify AKS cluster provisioning state
@@ -156,14 +183,6 @@ resource "azurerm_role_assignment" "acr_identity" {
   role_definition_name = "Owner"
   principal_id         = azurerm_container_registry.aks.identity[0].principal_id
   depends_on           = [null_resource.verify_aks_provisioning]
-}
-
-resource "azurerm_management_lock" "aks" {
-  count      = var.lock != null ? 1 : 0
-  name       = var.lock.name != null ? var.lock.name : "${var.lock.kind}-${var.name}"
-  scope      = azurerm_kubernetes_cluster.aks.id
-  lock_level = var.lock.kind
-  depends_on = [null_resource.verify_aks_provisioning]
 }
 
 data "azurerm_client_config" "current" {}
@@ -289,4 +308,31 @@ output "aks_principal_id" {
 output "aks_tenant_id" {
   description = "Tenant ID of the AKS cluster"
   value       = azurerm_kubernetes_cluster.aks.identity[0].tenant_id
+}
+
+resource "azurerm_kubernetes_cluster_extension" "container_storage" {
+  name           = "microsoft-azurecontainerstorage"
+  cluster_id     = azurerm_kubernetes_cluster.aks.id
+  extension_type = "microsoft.azurecontainerstorage"
+
+  configuration_settings = {
+    "enable-azure-container-storage" = "ephemeralDisk"
+    "storage-pool-option"           = "PremiumSSDv2"
+    "ephemeral-disk-volume-type"    = "PersistentVolumeWithAnnotation"
+  }
+}
+
+# Virtual Network and Subnet
+resource "azurerm_virtual_network" "aks" {
+  name                = "vnet-${var.name}"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.aks.name
+  address_space       = ["10.0.0.0/16"]
+}
+
+resource "azurerm_subnet" "aks" {
+  name                 = "subnet-${var.name}"
+  resource_group_name  = azurerm_resource_group.aks.name
+  virtual_network_name = azurerm_virtual_network.aks.name
+  address_prefixes     = ["10.0.1.0/24"]
 } 
