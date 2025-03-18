@@ -1,148 +1,121 @@
-# AKS Zone-Aware PostgreSQL Cluster
+# AKS Zone-Pinned PostgreSQL Deployment
 
-This project deploys an Azure Kubernetes Service (AKS) cluster with zone-redundant node pools optimized for PostgreSQL workloads, using Premium SSD v2 storage.
+This project deploys an Azure Kubernetes Service (AKS) cluster with zone-pinned PostgreSQL nodes using Azure Container Storage for persistent storage.
 
 ## Architecture
 
-```ascii
-+------------------------------------------+
-|              AKS Cluster                  |
-|                                          |
-|  +----------------+  +----------------+   |
-|  |   Zone 1      |  |    Zone 2     |   |
-|  |               |  |               |   |
-|  | +-----------+ |  | +-----------+ |   |
-|  | |  System   | |  | |  System   | |   |
-|  | |   Node    | |  | |   Node    | |   |
-|  | +-----------+ |  | +-----------+ |   |
-|  |               |  |               |   |
-|  | +-----------+ |  | +-----------+ |   |
-|  | | Postgres  | |  | | Postgres  | |   |
-|  | | Node (x2) | |  | | Node (x1) | |   |
-|  | +-----------+ |  | +-----------+ |   |
-|  |               |  |               |   |
-|  +----------------+  +----------------+   |
-|                                          |
-|  +----------------------------------+    |
-|  |      Premium SSD v2 Storage      |    |
-|  |  +-------------+ +-------------+ |    |
-|  |  | Zone 1 Pool | | Zone 2 Pool | |    |
-|  |  | 80K IOPS   | | 80K IOPS    | |    |
-|  |  | 1.2GB/s    | | 1.2GB/s     | |    |
-|  |  +-------------+ +-------------+ |    |
-|  +----------------------------------+    |
-+------------------------------------------+
-```
+The deployment consists of:
 
-## Components
+1. **AKS Cluster**
+   - System node pool (3 nodes) in zones 1 and 2
+   - PostgreSQL node pool (3 nodes) in zone 1
+   - PostgreSQL node pool (3 nodes) in zone 2
+   - Azure Container Storage for persistent storage
 
-### Node Pools
-1. **System Node Pool**
-   - VM Size: Standard_D2s_v3
-   - Nodes: 2 (distributed across zones 1 and 2)
-   - Auto-scaling: 1-3 nodes
-   - Purpose: System workloads and cluster services
+2. **Node Pools**
+   - System nodes: Standard_D4s_v5 (4 vCPUs)
+   - PostgreSQL nodes: Standard_D4s_v5 (4 vCPUs)
+   - All nodes support premium storage
 
-2. **PostgreSQL Node Pools**
-   - VM Size: Standard_D2s_v3 (smallest in Dsv3-series)
-   - Zone 1: 2 nodes
-   - Zone 2: 1 node
-   - Auto-scaling: 1-3 nodes per zone
-   - Node taints: "node-type=postgres:NoSchedule"
-   - Labels: node-type=postgres, zone=1|2
-
-### Storage Configuration
-- **Storage Class**: Premium SSD v2
-- **Performance**:
-  - IOPS: 80,000 per disk
-  - Throughput: 1,200 MB/s per disk
-- **Features**:
-  - Volume expansion enabled
-  - WaitForFirstConsumer binding mode
-  - Zone-redundant deployment
-
-### Networking
-- Virtual Network: 10.0.0.0/16
-- AKS Subnet: 10.0.1.0/24
-- Network Plugin: Azure CNI
-- Network Policy: Azure
-
-### Container Registry
-- Basic SKU with admin access
-- System-assigned managed identity
-- Integrated with AKS using AcrPull and AcrPush roles
+3. **Storage**
+   - Azure Container Storage for persistent volumes
+   - PostgreSQL nodes labeled with `acstor.azure.com/io-engine:acstor`
+   - Minimum 3 nodes per pool required for Azure Container Storage
 
 ## Prerequisites
-- Azure subscription
-- Azure CLI (az)
-- Terraform
+
+- Azure CLI (version 2.35.0 or later)
+- Terraform (version 1.0.0 or later)
 - kubectl
+- Azure subscription with permissions to create AKS clusters
+- Azure Container Storage supported region (westus3)
 
-## Deployment
+## Deployment Steps
 
-1. Initialize Terraform:
+1. **Initialize Terraform**
+   ```bash
+   terraform init
+   ```
+
+2. **Review Configuration**
+   - Check `terraform.tfvars` for your desired settings
+   - Ensure VM sizes meet Azure Container Storage requirements (minimum 4 vCPUs)
+   - Verify node counts (minimum 3 nodes per pool)
+
+3. **Deploy Infrastructure**
+   ```bash
+   ./run.sh
+   ```
+
+4. **Verify Deployment**
+   - Check node readiness
+   - Verify zone labels
+   - Monitor Azure Container Storage pods
+
+## Node Pool Configuration
+
+### System Node Pool
+- Size: Standard_D4s_v5
+- Count: 3 nodes
+- Zones: 1, 2
+- Purpose: System workloads and Azure Container Storage control plane
+
+### PostgreSQL Node Pool (Zone 1)
+- Size: Standard_D4s_v5
+- Count: 3 nodes
+- Zone: 1
+- Purpose: PostgreSQL primary nodes
+- Labels: `acstor.azure.com/io-engine:acstor`
+
+### PostgreSQL Node Pool (Zone 2)
+- Size: Standard_D4s_v5
+- Count: 3 nodes
+- Zone: 2
+- Purpose: PostgreSQL secondary nodes
+- Labels: `acstor.azure.com/io-engine:acstor`
+
+## Storage Configuration
+
+Azure Container Storage is configured with:
+- Data plane components on PostgreSQL nodes
+- Control plane components on system nodes
+- Minimum 3 nodes per pool for high availability
+- Premium storage support via Standard_D4s_v5 VMs
+
+## Cleanup
+
+To remove all resources:
 ```bash
-terraform init
+terraform destroy -auto-approve
 ```
 
-2. Review the configuration:
-```bash
-terraform plan
-```
+## Notes
 
-3. Deploy the infrastructure:
-```bash
-terraform apply
-```
-
-4. Run the verification script:
-```bash
-./run.sh
-```
-
-The script will:
-- Verify prerequisites
-- Deploy the AKS cluster
-- Configure kubectl
-- Verify node distribution
-- Display storage class configuration
+- Azure Container Storage requires minimum 4 vCPUs per VM
+- Each node pool must have at least 3 nodes for Azure Container Storage
+- PostgreSQL nodes are tainted to prevent other workloads from scheduling
+- System nodes are spread across zones 1 and 2 for high availability
 
 ## Configuration
 
 Key configuration values in `terraform.tfvars`:
 ```hcl
 # Node Sizes
-vm_size         = "Standard_D2s_v3"    # System nodes
-postgres_vm_size = "Standard_D2s_v3"    # PostgreSQL nodes
+vm_size         = "Standard_D4s_v5"    # System nodes
+postgres_vm_size = "Standard_D4s_v5"    # PostgreSQL nodes
 
 # Node Counts
-system_node_count        = 2
-postgres_zone1_node_count = 2
-postgres_zone2_node_count = 1
+system_node_count        = 3
+postgres_zone1_node_count = 3
+postgres_zone2_node_count = 3
 
 # Auto-scaling
-min_node_count = 1
+min_node_count = 3
 max_count = 3
 
 # Kubernetes Version
 kubernetes_version = "1.30"
 ```
-
-## Cleanup
-
-To destroy the infrastructure:
-```bash
-terraform destroy
-```
-
-## Production Considerations
-1. Enable Azure AD integration for RBAC
-2. Configure network policies
-3. Implement proper backup strategies
-4. Monitor node and storage performance
-5. Consider using availability zones 1, 2, and 3 for better redundancy
-6. Implement proper resource requests and limits
-7. Configure cluster autoscaling thresholds appropriately
 
 ## Tags and Labels
 - Environment-specific tags for resource management

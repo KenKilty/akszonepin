@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fio-pvc-zone1
+  namespace: acstor
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # Storage class name follows Azure Container Storage naming convention: acstor-<storage-pool-name>
+  # The storage pool name is defined in storage.tf as 'postgres-zone1'
+  storageClassName: acstor-postgres-zone1
+  resources:
+    requests:
+      storage: 100Gi 

@@ -1,0 +1,22 @@
+kind: Pod
+apiVersion: v1
+metadata:
+  name: fio-pod-zone1
+  namespace: acstor
+spec:
+  nodeSelector:
+    topology.kubernetes.io/zone: westus3-1
+    agentpool: pgzone1
+  volumes:
+    - name: azurediskpv
+      persistentVolumeClaim:
+        claimName: fio-pvc-zone1
+  containers:
+    - name: fio
+      image: nixery.dev/shell/fio
+      args:
+        - sleep
+        - "1000000"
+      volumeMounts:
+        - mountPath: "/volume"
+          name: azurediskpv 

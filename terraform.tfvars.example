@@ -1,19 +1,35 @@
-# Required variables
-location            = "eastus"
-name               = "aks-zone-test"
+# Cluster Configuration
+name                = "aks-zone-test"
 resource_group_name = "rg-aks-zone-test"
-owner              = "example-user"
+location            = "westus3"
+kubernetes_version  = "1.31.5"
 
-# AKS Node Pool Configuration
-vm_size            = "Standard_DS2_v2"
-node_count         = 2
-min_node_count     = 2
-max_node_count     = 4
-availability_zones = ["1", "2"]
+# System Node Pool Configuration
+vm_size             = "Standard_D4s_v5"
+system_node_count   = 2
+system_node_zones   = ["1", "2"]
 
-# Optional variables
-enable_telemetry = true
+# PostgreSQL Zone 1 Node Pool Configuration
+postgres_vm_size           = "Standard_D4s_v5"
+postgreszone1_node_count  = 2
+postgreszone1_zones      = ["1"]
+
+# PostgreSQL Zone 2 Node Pool Configuration
+postgreszone2_node_count  = 1
+postgreszone2_zones      = ["2"]
+
+# Resource Tags and Metadata
 tags = {
   Environment = "Development"
   Project     = "AKS Zone Test"
-} 
+  ManagedBy   = "Terraform"
+}
+
+agents_tags = {
+  Workload = "System"
+}
+
+owner = "example-user"
+
+# Optional variables
+enable_telemetry = true 

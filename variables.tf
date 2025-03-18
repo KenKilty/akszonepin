@@ -1,105 +1,100 @@
-variable "location" {
-  description = "The Azure region where the resources should be deployed."
-  type        = string
-}
-
+# Cluster Configuration
 variable "name" {
-  description = "The name for the AKS resources created in the specified Azure Resource Group."
+  description = "Name of the AKS cluster"
   type        = string
 }
 
 variable "resource_group_name" {
-  description = "The resource group where the resources will be deployed."
+  description = "Name of the resource group"
   type        = string
 }
 
-variable "owner" {
-  description = "The owner tag value for all resources."
+variable "location" {
+  description = "Azure region where resources will be created"
   type        = string
-}
-
-variable "vm_size" {
-  description = "The size of the VM for the system node pool."
-  type        = string
-  default     = "Standard_D2s_v3"
-}
-
-variable "min_node_count" {
-  description = "The minimum number of nodes in the AKS node pools."
-  type        = number
-  default     = 1
-}
-
-variable "max_node_count" {
-  description = "The maximum number of nodes in the AKS node pools."
-  type        = number
-  default     = 3
-}
-
-variable "agents_tags" {
-  description = "A mapping of tags to assign to the Node Pools."
-  type        = map(string)
-  default     = null
-}
-
-variable "enable_telemetry" {
-  description = "Controls whether or not telemetry is enabled for the module."
-  type        = bool
-  default     = true
 }
 
 variable "kubernetes_version" {
-  description = "Specify which Kubernetes release to use. Specify only minor version, such as '1.28'."
+  description = "Kubernetes version for the AKS cluster"
   type        = string
-  default     = null
-}
-
-variable "tags" {
-  description = "Tags to apply to all resources."
-  type        = map(string)
-  default     = null
 }
 
 # System Node Pool Configuration
+variable "vm_size" {
+  description = "VM size for the system node pool"
+  type        = string
+}
+
 variable "system_node_count" {
   description = "Number of nodes in the system node pool"
   type        = number
-  default     = 2
 }
 
 variable "system_node_zones" {
   description = "Availability zones for the system node pool"
   type        = list(string)
-  default     = ["1", "2"]
 }
 
-# PostgreSQL Node Pool Configuration
-variable "postgres_zone1_node_count" {
-  description = "Number of nodes in the PostgreSQL Zone 1 node pool"
-  type        = number
-  default     = 2
-}
-
-variable "postgres_zone2_node_count" {
-  description = "Number of nodes in the PostgreSQL Zone 2 node pool"
-  type        = number
-  default     = 1
-}
-
-variable "postgres_zone1_zones" {
-  description = "Availability zones for the PostgreSQL Zone 1 node pool"
-  type        = list(string)
-  default     = ["1"]
-}
-
-variable "postgres_zone2_zones" {
-  description = "Availability zones for the PostgreSQL Zone 2 node pool"
-  type        = list(string)
-  default     = ["2"]
-}
-
+# PostgreSQL Zone 1 Node Pool Configuration
 variable "postgres_vm_size" {
-  description = "The size of the PostgreSQL VMs"
+  description = "VM size for PostgreSQL node pools"
   type        = string
-  default     = "Standard_D2s_v3"
+}
+
+variable "postgreszone1_node_count" {
+  description = "Number of nodes in PostgreSQL Zone 1 node pool"
+  type        = number
+}
+
+variable "postgreszone1_zones" {
+  description = "Availability zones for PostgreSQL Zone 1 node pool"
+  type        = list(string)
+}
+
+# PostgreSQL Zone 2 Node Pool Configuration
+variable "postgreszone2_node_count" {
+  description = "Number of nodes in PostgreSQL Zone 2 node pool"
+  type        = number
+}
+
+variable "postgreszone2_zones" {
+  description = "Availability zones for PostgreSQL Zone 2 node pool"
+  type        = list(string)
+}
+
+# Resource Tags and Metadata
+variable "tags" {
+  description = "Tags to apply to all resources"
+  type        = map(string)
+}
+
+variable "agents_tags" {
+  description = "Tags to apply to agent nodes"
+  type        = map(string)
+}
+
+variable "owner" {
+  description = "Owner of the resources"
+  type        = string
+}
+
+variable "vnet_address_space" {
+  description = "Address space for the virtual network"
+  type        = list(string)
+}
+
+variable "subnet_address_prefixes" {
+  description = "Address prefixes for the subnet"
+  type        = list(string)
+}
+
+# Node Pool Upgrade Settings
+variable "node_pool_max_surge" {
+  description = "Maximum number of nodes that can be created above the desired count during an upgrade"
+  type        = string
+}
+
+variable "postgres_storage_size" {
+  description = "Size of the storage pool for PostgreSQL nodes"
+  type        = string
 } 
